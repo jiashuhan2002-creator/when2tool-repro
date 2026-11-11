@@ -1,0 +1,9 @@
+# macOS 可用的依赖（vllm 在 macOS 无 wheel，必须剔除）
+torch>=2.6.0
+transformers==4.55.2
+accelerate>=1.0.0
+datasets
+matplotlib
+scikit-learn
+numpy
+pandas

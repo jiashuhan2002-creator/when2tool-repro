@@ -122,13 +122,14 @@ def run_inference(args, resolved_path, train_tasks, test_tasks):
     mode_str = "reasoning" if args.require_reasoning else "no_reasoning"
 
     print(f"\n{'='*60}")
-    print(f"Phase 1: Inference (vllm) — {mode_str}")
+    print(f"Phase 1: Inference ({args.backend}) — {mode_str}")
     print(f"  Model: {resolved_path}")
 
     model = AgentModel(
         model_path=resolved_path,
-        backend="vllm",
+        backend=args.backend,
         max_new_tokens=args.max_new_tokens,
+        device=args.device,
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         vllm_dtype="bfloat16",
@@ -294,8 +295,10 @@ def run_extraction(args, resolved_path, train_tasks, test_tasks):
         resolved_path,
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
+        device_map="auto" if args.device == "cuda" else None,
     ).eval()
+    if args.device != "cuda":
+        hf_model = hf_model.to(args.device)
     hidden_dim = hf_model.config.hidden_size
     print(f"Model loaded. hidden_dim={hidden_dim}")
 
@@ -322,6 +325,8 @@ def main():
     parser.add_argument("--require_reasoning", action="store_true",
                         help="Use reasoning mode for both labels and hidden states")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--backend", type=str, default="vllm", choices=["vllm", "hf"],
+                        help="Phase 1 推理后端。macOS 无 vllm，用 hf。")
     parser.add_argument("--max_new_tokens", type=int, default=2048)
     parser.add_argument("--max_rounds", type=int, default=12)
     parser.add_argument("--tensor_parallel_size", type=int, default=4)
