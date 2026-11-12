@@ -19,6 +19,11 @@ Key results:
 - Probe&Prefill reduces tool calls by 38% with only 1.7% accuracy loss
 - No fine-tuning, no reasoning tokens, <1ms overhead
 
+> **This is a fork prepared for FTEC5660 Reproducibility (item No.18), Shuhan Jia — 1155267069.**
+> It adds an Apple-Silicon (MPS) backend path, a stratified subset sampler, and a label-validity
+> audit; it reproduces the paper's probe AUROC claim. **Jump to [Reproduction on macOS](#reproduction-on-macos-apple-silicon)**
+> to run it, or see [`REPRODUCTION.md`](REPRODUCTION.md) for the full report.
+
 ## Quick Start
 
 ### Installation
@@ -84,6 +89,84 @@ Run all models (default if no model specified):
 ```bash
 ./run_pipeline.sh
 ```
+
+## Reproduction on macOS (Apple Silicon)
+
+Runs the probe experiment with **no vLLM and no CUDA** — `transformers` on MPS, or CPU as a fallback.
+Tested on an M4 / 16 GB / macOS 15.4.1 with Python 3.13.
+
+### 1. Install
+
+`requirements.txt` pins `vllm==0.8.5`, which has no macOS wheel. Use the reduced file instead:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-mac.txt
+```
+
+Keep all HuggingFace state inside the repo (otherwise `~/.cache` may be unwritable in sandboxes):
+
+```bash
+export HF_HOME="$PWD/.hf_cache"
+```
+
+> `src/model.py` in this fork already respects `--device mps`. On a clean clone of the upstream repo,
+> run `python tools/allow_mps.py` first — upstream hardcodes
+> `torch.device(device if torch.cuda.is_available() else "cpu")`, which silently forces CPU on every Mac.
+
+### 2. Build a stratified subset
+
+Full-scale runs need 900 train + 2250 test tasks, which is out of budget on a laptop. This samples the
+same number of tasks per (environment × difficulty) cell, so the difficulty mix stays balanced:
+
+```bash
+python tools/make_subset.py --split train --per-cell 3 --out data/scaled_train.json   # 135 tasks
+python tools/make_subset.py --split test  --per-cell 3 --out data/scaled_test.json    # 135 tasks
+```
+
+### 3. Run
+
+```bash
+./run_subset.sh                        # qwen3-1.7b, mps, 1024 tokens, 3 per cell
+./run_subset.sh qwen3-1.7b mps 256 3   # 256-token control arm
+```
+
+This labels each task (does the no-tool rollout answer correctly?), extracts hidden states, fits the
+per-layer probe, and prints the label-validity audit. Wall-clock on M4 MPS: **4 h 48 m** for the
+256-token arm, **10 h 47 m** for the 1024-token arm (270 tasks each).
+
+### 4. Results
+
+Test AUROC on 135 held-out tasks, against the paper's claimed 0.89–0.96:
+
+| Generation budget | Probe input | Peak layer | Test AUROC |
+|---|---|---|---|
+| 256 tokens (control) | all tasks | L15 | 0.837 |
+| 256 tokens (control) | parseable only | L15 | 0.872 |
+| **1024 tokens (main)** | all tasks | L28 | **0.874** |
+| **1024 tokens (main)** | parseable only | L25 | **0.912** |
+
+The main arm lands inside the claimed range. Two caveats worth knowing before reading any number:
+
+- **Hidden states are identical across both arms** (extraction happens at the prompt prefill, before
+  generation), so the 256 → 1024 difference is a pure label-quality effect, not a feature effect.
+- **~45% of no-tool rollouts never emit a parseable `\boxed{}`** at either budget, and the label rule
+  `tool_necessary = 0 if correct else 1` counts those as "needs a tool". Raising the token budget from
+  256 to 1024 did **not** fix this (54–56% → 54–58% parseable), which points at prompt-protocol
+  compliance rather than truncation. Always run `tools/probe_parseable_only.py` and report both
+  numbers — see [`REPRODUCTION.md`](REPRODUCTION.md) §6.2.
+
+### Added tooling
+
+| File | Purpose |
+|---|---|
+| `tools/make_subset.py` | Stratified per-cell sampler over the HF parquet files |
+| `tools/allow_mps.py` | Idempotent patch so `--device mps` is honoured |
+| `tools/report_tables.py` | Layer scan, per-difficulty AUROC, all-layer ablation |
+| `tools/probe_parseable_only.py` | Label-validity audit: unfiltered vs parseable-only |
+| `tools/compare_arms.py` | Cross-arm comparison + layer-scan figure |
+
+Full write-up, debug diary, and conclusions: [`REPRODUCTION.md`](REPRODUCTION.md).
 
 ## Pipeline Steps
 

@@ -54,16 +54,34 @@ def strat(rows, d, filt, peak):
     return out
 
 
+def _style(i, filt):
+    colors = ['#9aa5b1', '#d1495b', '#0077b6', '#2a9d8f']
+    return colors[i % len(colors)], ('-' if filt else '--')
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--out_md', default=None)
     ap.add_argument('--out_png', default=None)
+    ap.add_argument('--arm', action='append', default=None,
+                    metavar='LABEL:DIR',
+                    help='e.g. --arm 1024:probe_data/scaled1024 (repeatable). '
+                         'Defaults to the two arms used in the report.')
     args = ap.parse_args()
 
-    arms = [('256', 'probe_data/scaled'), ('1024', 'probe_data/scaled1024')]
+    if args.arm:
+        arms = []
+        for spec in args.arm:
+            label, _, d = spec.partition(':')
+            if not d:
+                raise SystemExit(f'bad --arm {spec!r}, expected LABEL:DIR')
+            arms.append((label, d))
+    else:
+        arms = [('256', 'probe_data/scaled'), ('1024', 'probe_data/scaled1024')]
+
     lines = []
     curves = {}
-    for tag, d in arms:
+    for i, (tag, d) in enumerate(arms):
         for filt in (False, True):
             rows, _, _, _ = scan(d, filt)
             key = f'{tag}{"F" if filt else "U"}'
@@ -87,20 +105,23 @@ if __name__ == '__main__':
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=160)
-        style = {'256U': ('#9aa5b1', '--', '256 tok · unfiltered'),
-                 '256F': ('#9aa5b1', '-', '256 tok · parseable'),
-                 '1024U': ('#d1495b', '--', '1024 tok · unfiltered'),
-                 '1024F': ('#d1495b', '-', '1024 tok · parseable')}
         for k, rows in curves.items():
-            c, ls, lab = style[k]
-            ax.plot([r['layer'] for r in rows], [r['test'] for r in rows], ls, color=c, lw=1.8, label=lab)
+            tag = k[:-1]
+            filt = k.endswith('F')
+            i = [a[0] for a in arms].index(tag)
+            c, ls = _style(i, filt)
+            ax.plot([r['layer'] for r in rows], [r['test'] for r in rows], ls,
+                    color=c, lw=1.8,
+                    label=f'{tag} tok · {"parseable" if filt else "unfiltered"}')
         ax.axhline(0.89, color='#2e7d32', lw=1, ls=':', alpha=.8)
         ax.axhline(0.96, color='#2e7d32', lw=1, ls=':', alpha=.8)
         ax.text(0.3, 0.893, 'paper 0.89', fontsize=7, color='#2e7d32')
         ax.text(0.3, 0.963, 'paper 0.96', fontsize=7, color='#2e7d32')
         ax.set_xlabel('Transformer layer')
         ax.set_ylabel('Test AUROC')
-        ax.set_title('Tool-necessity probe: layer scan, 135 train / 135 test')
+        n_tr = curves[next(iter(curves))][0]['n_tr']
+        n_te = curves[next(iter(curves))][0]['n_te']
+        ax.set_title(f'Tool-necessity probe: layer scan, {n_tr} train / {n_te} test')
         ax.set_ylim(0.45, 1.02)
         ax.grid(alpha=.22)
         ax.legend(fontsize=7.5, loc='lower right')
