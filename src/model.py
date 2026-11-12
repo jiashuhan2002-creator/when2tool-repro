@@ -103,7 +103,7 @@ class HFAgentBackend:
         device="cuda",
         enable_thinking=None,
     ):
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device if (device != "cuda" or torch.cuda.is_available()) else "cpu")
         self.max_new_tokens = max_new_tokens
         self.enable_thinking = enable_thinking
 
