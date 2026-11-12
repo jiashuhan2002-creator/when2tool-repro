@@ -246,12 +246,12 @@ for key in sorted(cells):            # cell = (env_name, difficulty)，共 45 �
 
 ---
 
-## 4.7 对照臂结果（256 tokens）
+### 4.7 对照臂结果（256 tokens）
 
 数据：`probe_data/scaled`，train 135 / test 135，29 层 × 2048 维。
 `tool_necessary` 占比：train 76.3%，test 79.3%。
 
-### 表 4.7a 层扫描
+#### 表 4.7a 层扫描
 
 | 口径 | n (train/test) | 峰值层 | test AUROC | test acc |
 |---|---|---|---|---|
@@ -267,7 +267,7 @@ for key in sorted(cells):            # cell = (env_name, difficulty)，共 45 �
 1. 标签噪声压低但不摧毁信号——它更像"稀释"而非"伪造"；
 2. L15 的信号不是截断伪影，在干净子集上依然是最强层。
 
-### 表 4.7b 层曲线形状
+#### 表 4.7b 层曲线形状
 
 ```text
 L 0  0.500   ← embedding 层，无信息（预期）
@@ -290,7 +290,7 @@ L28  0.820
 
 > 注意：仓库用 "train accuracy 选层"（`train_probe.py` 原逻辑）在本次配置下会选到 **L4（0.777）**，比真实峰值低 0.06。这就是 §4.3 提到的乐观偏差在本实验中的具体体现——因此本报告以**整条曲线**为准，而非仓库自动选出的那一层。
 
-### 表 4.7c 分难度 AUROC（峰值层 L15）
+#### 表 4.7c 分难度 AUROC（峰值层 L15）
 
 | 口径 | easy | medium | hard |
 |---|---|---|---|
@@ -303,12 +303,12 @@ L28  0.820
 - **medium 组最弱（0.75–0.79）。** 符合直觉：中等难度任务的必要性边界最模糊，且该组负例最少（14/24）。
 - **hard 组最强（0.91–0.94），但要打折看。** 负例仅 3–4 条，AUROC 的方差极大，不能与 easy 组等量齐观。
 
-## 4.8 主结果：1024-token 臂
+### 4.8 主结果：1024-token 臂
 
 数据：`probe_data/scaled1024`，train 135 / test 135，29 层 × 2048 维。运行 10 h 47 min。
 `tool_necessary` 占比：train 71.9%，test 77.0%。
 
-### 表 4.8a 层扫描
+#### 表 4.8a 层扫描
 
 | 口径 | n (train/test) | 峰值层 | test AUROC | test acc |
 |---|---|---|---|---|
@@ -320,7 +320,7 @@ L28  0.820
 - unfiltered **0.874 ≥ 0.85** → **复现**
 - parseable-only **0.912** → **复现，且落在论文区间 0.89–0.96 之内**
 
-### 表 4.8b 层曲线形状（每 2 层）
+#### 表 4.8b 层曲线形状（每 2 层）
 
 ```text
 L 0  0.500  ← embedding，无信息（预期）
@@ -332,7 +332,7 @@ L22  0.843    L24  0.863    L26  0.869    L28  0.874   ← peak
 
 与 256 臂的"中层隆起 + 宽平台"不同，主结果臂的曲线是**单调向深层上升**：L12 之后基本不再回落，L24–L28 形成 0.863–0.874 的尾部平台。两个臂的形状差异见 §4.9 的解释。
 
-### 表 4.8c 分难度 AUROC
+#### 表 4.8c 分难度 AUROC
 
 | 口径 | easy | medium | hard |
 |---|---|---|---|
@@ -345,7 +345,7 @@ L22  0.843    L24  0.863    L26  0.869    L28  0.874   ← peak
 
 ---
 
-## 4.9 两臂对照：一次干净的"纯标签"因果实验
+### 4.9 两臂对照：一次干净的"纯标签"因果实验
 
 这是本次复现中最有价值的意外发现。
 
@@ -369,7 +369,7 @@ torch.equal(hidden_256, hidden_1024)  # → True
 
 这比"AUROC 达标了"更有说服力：它把"标签噪声会压低探针性能"从一句直觉变成了可测量的量。
 
-### 一个必须承认的失败：提高 token 预算没有解决截断问题
+### 4.9.1 一个必须承认的失败：提高 token 预算没有解决截断问题
 
 我做 1024 臂的动机是"256 token 截断了 `\boxed{}`，加大预算应当修复"。**这个假设被证伪了**：
 
@@ -384,7 +384,7 @@ torch.equal(hidden_256, hidden_1024)  # → True
 
 ---
 
-## 4.10 修改实验：全层拼接 vs 单层（零额外算力）
+### 4.10 修改实验：全层拼接 vs 单层（零额外算力）
 
 | 特征 | 维度 | test AUROC (unfiltered) | test AUROC (parseable) |
 |---|---|---|---|
@@ -582,7 +582,7 @@ no-tool correct: 2/45
 ## 8. 复现指令
 
 ```bash
-git clone <本仓库> && cd when2tool
+git clone https://github.com/jiashuhan2002-creator/when2tool-repro.git && cd when2tool-repro
 python3 -m venv .venv && .venv/bin/pip install -r requirements-mac.txt
 
 # 1) 分层子集（每 cell 3 条 → 135 + 135）
@@ -598,6 +598,9 @@ HF_HOME="$PWD/.hf_cache" .venv/bin/python -u src/extract_features.py \
 # 3) 层扫描 + 分难度 + 拼接消融 + 两臂对照
 .venv/bin/python tools/report_tables.py --data_dir ./probe_data/scaled1024
 .venv/bin/python tools/compare_arms.py --out_png probe_data/scaled1024/compare_arms.png
+
+# 0) 上述 1)–3) 的一键等价入口
+./run_subset.sh qwen3-1.7b mps 1024 3
 ```
 
 环境变量 `HF_HOME` 指向仓库内的 `.hf_cache/`（已 gitignore，模型权重 3.8 GB 不入库）。
